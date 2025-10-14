@@ -1,5 +1,5 @@
 """
-ColorSync Access - New Features Extension
+Vision Chroma pro
 Add to modules/ folder as features_extension.py
 """
 

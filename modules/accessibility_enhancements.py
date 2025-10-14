@@ -1,5 +1,5 @@
 """
-ColorSync Access - Accessibility Enhancements
+Vision Chroma pro
 Add to modules/ folder as accessibility_enhancements.py
 """
 

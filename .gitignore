@@ -1,0 +1,21 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.env/
+venv/
+webmind_env/
+*.env
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
+
+# PyInstaller
+*.spec
+
+# Logs and temp
+*.log
+*.tmp

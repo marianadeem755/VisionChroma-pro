@@ -1,0 +1,12 @@
+streamlit==1.39.0
+requests==2.32.3
+beautifulsoup4==4.12.3
+textstat==0.7.4
+reportlab==4.2.2
+pillow==10.4.0
+matplotlib==3.8.4
+seaborn==0.13.2
+click==8.1.8
+pydantic==2.10.6
+colorspacious==1.1.2
+cssutils==2.11.1

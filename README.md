@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vision Chroma pro is a  web accessibility and readability analyzer that evaluates websites for WCAG compliance, color contrast issues, and content readability. It provides detailed reports, visual analytics, and actionable recommendations to improve digital accessibility.
+Vision Chroma pro is a  web accessibility and readability analyzer which evaluates websites for WCAG compliance, color contrast issues, and content readability. It provides detailed reports, visual analytics, and actionable recommendations to improve digital accessibility
 
 
 ## Features

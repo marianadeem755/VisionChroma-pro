@@ -1,5 +1,5 @@
 """
-Vision Chroma Pro
+Vision Chroma Pro- Professional Edition
 FIXED: Now analyzes REAL website data (no hardcoded defaults)
 """
 
@@ -550,7 +550,7 @@ def generate_recommendations(issues, pairs, colors, readability):
 # Streamlit UI
 # ---------------------------
 st.set_page_config(
-    page_title=" Vision Chroma Pro",
+    page_title="Vision Chroma Pro",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"

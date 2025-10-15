@@ -236,6 +236,11 @@ Get a quick visual overview of ColorSync Access in action:
 ![Download Report](images/report.jpg)
 *Comprehensive PDF report with charts, recommendations, and action items*
 
+### ReimagineWeb Analysis
+![ReimagineWeb Analysis](images/reimagine-analysis.jpg)
+*AI-powered website analysis from ReimagineWeb showing color palette, contrast analytics, and improvement suggestions for VisionChroma-pro*
+
+
 ## Usage Guide
 
 ### Basic Workflow

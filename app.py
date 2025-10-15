@@ -1,6 +1,6 @@
 """
-Vision Chroma pro
-Enhanced UI/UX, Better Error Handling, Modern Design
+ColorSync Access - Professional Edition
+FIXED: Now analyzes REAL website data (no hardcoded defaults)
 """
 
 import streamlit as st
@@ -29,13 +29,7 @@ from reportlab.lib.utils import ImageReader
 from modules.pdf_report_complete import generate_complete_pdf_report
 from modules.heatmap_generator import generate_simple_heatmap
 from modules.features_extension import (
-    analyze_typography_hierarchy,
-    plot_typography_analysis,
-    generate_complementary_palette,
-    create_palette_comparison_image,
-    compute_wcag_compliance_score,
-    create_wcag_compliance_chart,
-    generate_wcag_certificate
+    plot_lowest_contrast_pairs
 )
 from modules.accessibility_enhancements import (
     compute_score_breakdown,
@@ -44,6 +38,10 @@ from modules.accessibility_enhancements import (
     export_analysis_json
 )
 from modules.heatmap_generator import generate_simple_heatmap, generate_heatmap_with_stats
+
+import re  # Already present, just confirming
+from itertools import combinations  # NEW: Add for generating color pairs
+from modules.colorblind_simulator import MATRICES  # NEW: Add for colorblind matrices
 # optional libs
 try:
     import textstat
@@ -59,7 +57,7 @@ except:
 
 try:
     import cssutils
-    cssutils.log.setLevel(100)  # suppress warnings
+    cssutils.log.setLevel(100)
     HAS_CSSUTILS = True
 except:
     HAS_CSSUTILS = False
@@ -132,44 +130,6 @@ def inject_custom_css():
             letter-spacing: 0.05em;
         }
         
-        /* Info boxes */
-        .stAlert {
-            border-radius: 12px;
-            border: none;
-            padding: 16px 20px;
-        }
-        
-        /* Success box */
-        .stSuccess {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-        }
-        
-        /* Error box */
-        .stError {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-        }
-        
-        /* Warning box */
-        .stWarning {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: white;
-        }
-        
-        /* Sidebar */
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
-        }
-        
-        /* Divider */
-        hr {
-            margin: 2rem 0;
-            border: none;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #e0e7ff, transparent);
-        }
-        
         /* Color swatches */
         .color-swatch {
             border-radius: 12px;
@@ -188,7 +148,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # ---------------------------
-# Utility functions (same as before but with improvements)
+# Utility functions
 # ---------------------------
 def normalize_hex(h):
     h = str(h).strip()
@@ -277,9 +237,10 @@ def validate_url(url):
         return False, "Invalid URL format"
 
 # ---------------------------
-# CSS & color extraction (improved)
+# FIXED: Extract REAL colors (NO defaults unless absolutely empty)
 # ---------------------------
 def extract_colors_from_html_css(html, base_url=None):
+    """Extract colors from actual website - NO HARDCODED DEFAULTS"""
     colors = []
     try:
         soup = BeautifulSoup(html, 'html.parser')
@@ -307,7 +268,7 @@ def extract_colors_from_html_css(html, base_url=None):
         # linked CSS
         for link in soup.find_all('link', rel=lambda x: x and 'stylesheet' in str(x).lower()):
             href = link.get('href')
-            if not href: 
+            if not href:
                 continue
             css_url = href if bool(urlparse(href).netloc) else urljoin(base_url or '', href)
             try:
@@ -318,28 +279,60 @@ def extract_colors_from_html_css(html, base_url=None):
                         hx = normalize_hex(m)
                         if hx and hx not in colors:
                             colors.append(hx)
-                    for m in re.findall(r'rgb[a]?\([^)]+\)', css_text):
+                    for m in re.findall(r'rgba?\([^)]+\)', css_text):
                         hx = normalize_hex(m)
                         if hx and hx not in colors:
                             colors.append(hx)
-            except Exception:
+                    for m in re.findall(r'--[\w-]+\s*:\s*([^;]+);', css_text):
+                        hx = normalize_hex(m.strip())
+                        if hx and hx not in colors:
+                            colors.append(hx)
+            except Exception as e:
+                print(f"CSS fetch failed for {css_url}: {e}")
                 continue
-        
-        # meta theme
-        for meta in soup.find_all('meta', attrs={'name':'theme-color'}):
-            hx = normalize_hex(meta.get('content',''))
+
+        # Meta theme
+        for meta in soup.find_all('meta', attrs={'name': 'theme-color'}):
+            hx = normalize_hex(meta.get('content', ''))
             if hx and hx not in colors:
                 colors.append(hx)
                 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error extracting colors: {e}")
 
-    # ensure defaults
-    default = ['#FFFFFF','#000000','#667EEA','#764BA2','#F0F0F0','#FF7043']
-    for d in default:
-        if d not in colors:
-            colors.append(d)
-    return colors[:24]
+    # ONLY add defaults if NO colors found at all
+    if len(colors) == 0:
+        st.warning("⚠️ No colors detected. Website may use external stylesheets or images.")
+        colors = ['#FFFFFF', '#000000']  # Minimal fallback
+    
+    return colors[:24]  # Return unique colors
+
+# ---------------------------
+# FIXED: Extract REAL buttons and images
+# ---------------------------
+def extract_buttons_and_images(html, base_url=None):
+    """Extract actual interactive elements and images from website"""
+    soup = BeautifulSoup(html, 'html.parser')
+    
+    # Extract buttons (button tags + clickable links)
+    buttons = []
+    for btn in soup.find_all(['button', 'a', 'input']):
+        if btn.name == 'input' and btn.get('type') not in ['button', 'submit']:
+            continue
+        text = btn.get_text(strip=True)
+        if text:
+            buttons.append(text[:50])  # Limit length
+    
+    # Extract images
+    images = []
+    for img in soup.find_all('img'):
+        src = img.get('src', '')
+        if src:
+            full_url = src if bool(urlparse(src).netloc) else urljoin(base_url or '', src)
+            images.append(full_url)
+    
+    print(f"✅ Extracted {len(buttons)} buttons and {len(images)} images")
+    return buttons[:50], images[:50]  # Limit to reasonable numbers
 
 def extract_text_content(html):
     soup = BeautifulSoup(html, 'html.parser')
@@ -373,23 +366,50 @@ def compute_readability(text):
     except Exception:
         return {'flesch_ease': None, 'fk_grade': None}
 
-def evaluate_contrast_pairs(colors, threshold=4.5):
-    issues = []
-    pairs = []
-    for i, a in enumerate(colors):
-        for j, b in enumerate(colors):
-            if i == j:
-                continue
-            ratio = contrast_ratio(a,b)
-            if ratio < threshold:
-                issues.append({'fg':a, 'bg':b, 'ratio':ratio})
-            pairs.append({'fg':a,'bg':b,'ratio':ratio})
-    return issues, pairs
+# def evaluate_contrast_pairs(colors, threshold=4.5):
+#     issues = []
+#     pairs = []
+#     for i, a in enumerate(colors):
+#         for j, b in enumerate(colors):
+#             if i == j:
+#                 continue
+#             ratio = contrast_ratio(a,b)
+#             if ratio < threshold:
+#                 issues.append({'fg':a, 'bg':b, 'ratio':ratio})
+#             pairs.append({'fg':a,'bg':b,'ratio':ratio})
+#     return issues, pairs
+
+def colorblind_transform(rgb, mat):
+    flat = np.array(rgb).astype(float) / 255.0
+    transformed = flat @ mat.T
+    return np.clip(transformed, 0, 1) * 255
+
+def colorblind_contrast_ratio(fg_hex, bg_hex, cb_type):
+    mat = MATRICES[cb_type]
+    fg_rgb = hex_to_rgb(fg_hex)
+    bg_rgb = hex_to_rgb(bg_hex)
+    fg_cb = colorblind_transform(fg_rgb, mat)
+    bg_cb = colorblind_transform(bg_rgb, mat)
+    l1 = relative_luminance(fg_cb)
+    l2 = relative_luminance(bg_cb)
+    return round((max(l1, l2) + 0.05) / (min(l1, l2) + 0.05), 2)
 
 # ---------------------------
 # Charts with professional styling
 # ---------------------------
 def plot_contrast_issues(pairs):
+    """Generate contrast chart from ACTUAL pairs"""
+    if not pairs:
+        # Create empty chart
+        fig, ax = plt.subplots(figsize=(10,5), facecolor='white')
+        ax.text(0.5, 0.5, 'No contrast data available', ha='center', va='center', fontsize=14)
+        ax.axis('off')
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close()
+        buf.seek(0)
+        return buf
+    
     df = pd.DataFrame(pairs)
     df_sorted = df.sort_values('ratio')
     top = df_sorted.head(10)
@@ -406,7 +426,6 @@ def plot_contrast_issues(pairs):
     ax.set_xlabel('Contrast Ratio', fontsize=12, fontweight='bold')
     ax.set_title('Lowest Contrast Pairs', fontsize=14, fontweight='bold', pad=20)
     
-    # Add threshold lines
     ax.axvline(x=4.5, color='#f59e0b', linestyle='--', linewidth=2, alpha=0.7, label='AA (4.5:1)')
     ax.axvline(x=7.0, color='#10b981', linestyle='--', linewidth=2, alpha=0.7, label='AAA (7:1)')
     ax.legend(loc='lower right')
@@ -423,6 +442,14 @@ def plot_contrast_issues(pairs):
     return buf
 
 def create_palette_swatches(colors, sw=100, h=80):
+    """Create swatches from ACTUAL extracted colors"""
+    if not colors:
+        # Empty placeholder
+        img = Image.new('RGB', (600, 80), (240, 240, 240))
+        draw = ImageDraw.Draw(img)
+        draw.text((250, 35), "No colors detected", fill=(100, 100, 100))
+        return img
+    
     width = sw * len(colors)
     img = Image.new('RGB', (width, h), (255,255,255))
     draw = ImageDraw.Draw(img)
@@ -448,6 +475,7 @@ def create_palette_swatches(colors, sw=100, h=80):
     return img
 
 def simulate_palette_colorblind(img, mode='protanopia'):
+    """Simulate colorblindness on ACTUAL palette"""
     try:
         arr = np.array(img).astype(float)/255.0
         if HAS_COLORSPACIOUS:
@@ -494,11 +522,14 @@ def compute_overall_score(num_issues, total_pairs, flesch, fk_grade):
 def generate_recommendations(issues, pairs, colors, readability):
     recs = []
     seen = set()
-    for it in sorted(issues, key=lambda x: x['ratio'])[:15]:
+    for it in sorted(issues, key=lambda x: x['min_ratio'])[:15]:
         key = (it['fg'], it['bg'])
         if key in seen: continue
         seen.add(key)
-        recs.append(f"Improve contrast: {it['fg']} on {it['bg']} (current: {it['ratio']}:1) → Use {suggest_accessible_fg(it['bg'])}")
+        suggestion = suggest_accessible_fg(it['bg'], 7.0)  # Aim for AAA
+        recs.append(f"Improve contrast: {it['fg']} on {it['bg']} (current: {it['ratio']}:1, colorblind min: {it['min_ratio']}:1) → Use {suggestion}")
+        if it['is_colorblind_issue']:
+            recs.append(f"Colorblind issue detected for {it['fg']} on {it['bg']} - test with colorblind simulation tools")
     
     recs.append("Ensure all images have descriptive alt text for screen readers")
     recs.append("Use semantic HTML5 elements (header, nav, main, footer) for better structure")
@@ -515,27 +546,11 @@ def generate_recommendations(issues, pairs, colors, readability):
     recs.append("Ensure interactive elements have focus indicators for keyboard navigation")
     
     return recs
-
 # ---------------------------
-# PDF Generation (improved)
-# ---------------------------
-def generate_logo(width=400, height=100):
-    img = Image.new('RGBA', (width, height), (255,255,255,0))
-    draw = ImageDraw.Draw(img)
-    rect_color = (102,126,234)
-    draw.rounded_rectangle([0,0,width,height], radius=20, fill=rect_color)
-    try:
-        fnt = ImageFont.truetype("arial.ttf", 32)
-    except:
-        fnt = ImageFont.load_default()
-    draw.text((25, 30), "Vision Chroma pro", font=fnt, fill=(255,255,255))
-    return img
-
-# ---------------------------
-# Streamlit UI (Professional)
+# Streamlit UI
 # ---------------------------
 st.set_page_config(
-    page_title="Vision Chroma pro",
+    page_title="ColorSync Access - Professional Edition",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -548,7 +563,7 @@ st.markdown("""
     <div style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); 
                 padding: 40px 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(102,126,234,0.3);">
         <h1 style="color:white; margin:0; font-size: 42px; font-weight: 800;">
-            🌐 Vision Chroma pro
+            🌐 ColorSync Access
         </h1>
         <p style="color: rgba(255,255,255,0.95); margin:10px 0 0 0; font-size: 18px; font-weight: 500;">
             Professional Web Accessibility & Readability Analyzer
@@ -556,7 +571,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-st.write("")  # spacing
+st.write("")
 
 # Sidebar
 with st.sidebar:
@@ -596,7 +611,7 @@ with col1:
     
 with col2:
     st.markdown("### ")
-    st.write("")  # alignment spacing
+    st.write("")
     analyze_btn = st.button("🚀 Analyze Website")
 
 # URL validation and analysis
@@ -621,28 +636,149 @@ if analyze_btn:
             resp.raise_for_status()
             html = resp.text
             
-            # Step 2: Extract colors
+            # Step 2: Extract colors (REAL, no defaults)
             status_text.text("🎨 Extracting color palette...")
-            progress_bar.progress(40)
+            progress_bar.progress(35)
             colors = extract_colors_from_html_css(html, base_url=url)
             
-            # Step 3: Text analysis
-            status_text.text("📝 Analyzing text content...")
-            progress_bar.progress(60)
+            # Step 3: Extract buttons and images (NEW - REAL DATA)
+            status_text.text("🔘 Analyzing interactive elements...")
+            progress_bar.progress(50)
+            buttons, images = extract_buttons_and_images(html, base_url=url)
+            
+            # Step 4: Text analysis
+            status_text.text("📖 Analyzing text content...")
+            progress_bar.progress(65)
             text = extract_text_content(html)
             readability = compute_readability(text)
-            
-            # Step 4: Contrast evaluation
+            # Step 5: Contrast evaluation
             status_text.text("🔍 Evaluating accessibility...")
             progress_bar.progress(80)
-            issues, pairs = evaluate_contrast_pairs(colors, threshold)
+
+            # Initialize data dictionary
+            data = {}
+
+            # Use colors from extract_colors_from_html_css
+            cleaned_colors = []
+            for color_val in colors:  # Changed from data['colors'] to colors
+                if isinstance(color_val, str) and len(color_val.strip()) > 0:
+                    clean_color = color_val.strip().strip('"').strip("'")
+                    if re.match(r'^#?[0-9a-fA-F]{3,6}$', clean_color):
+                        if clean_color.startswith('#'):
+                            cleaned_colors.append(clean_color)
+                        else:
+                            cleaned_colors.append('#' + clean_color)
+                    elif re.match(r'^rgb\(\s*\d+,\s*\d+,\s*\d+\s*\)$', clean_color):
+                        # Convert RGB to hex if needed
+                        try:
+                            rgb = [int(x.strip()) for x in clean_color.strip('rgb()').split(',')]
+                            cleaned_colors.append('#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2]).upper())
+                        except:
+                            continue
+
+            # Limit to reasonable number to avoid too many combinations
+            cleaned_colors = cleaned_colors[:20]
+
+            # Generate all possible foreground/background pairs
+            pairs = []
+            for fg, bg in combinations(cleaned_colors, 2):
+                pairs.append({'fg': fg, 'bg': bg})  # Fixed: Corrected from 'bg': fg to 'bg': bg
+                pairs.append({'fg': bg, 'bg': fg})
+
+            print(f"[ANALYSIS] Generated {len(pairs)} color pairs from {len(cleaned_colors)} unique colors")
+
+            # Analyze each pair for contrast issues (normal + colorblind)
+            issues = []
+            for pair in pairs:
+                try:
+                    ratio = contrast_ratio(pair['fg'], pair['bg'])
+                    cb_ratios = {}
+                    is_issue = ratio < threshold  # Use user-selected threshold (4.5, 3.0, or 7.0)
+                    for cb_type in MATRICES:
+                        cb_ratio = colorblind_contrast_ratio(pair['fg'], pair['bg'], cb_type)
+                        cb_ratios[cb_type] = cb_ratio
+                        if cb_ratio < threshold:
+                            is_issue = True
+                    if is_issue:
+                        issues.append({
+                            'fg': pair['fg'],
+                            'bg': pair['bg'],
+                            'ratio': round(ratio, 2),
+                            'cb_ratios': {
+                                'protanopia': round(cb_ratios['protanopia'], 2),
+                                'deuteranopia': round(cb_ratios['deuteranopia'], 2),
+                                'tritanopia': round(cb_ratios['tritanopia'], 2)
+                            },
+                            'min_ratio': min([ratio] + list(cb_ratios.values())),
+                            'is_colorblind_issue': any(r < threshold for r in cb_ratios.values())
+                        })
+                except Exception as e:
+                    print(f"[WARNING] Error analyzing pair {pair['fg']} on {pair['bg']}: {e}")
+                    continue
+
+            # Sort by worst ratio and limit
+            issues = sorted(issues, key=lambda x: x['min_ratio'])[:15]
+            data['issues'] = issues
+            data['pairs'] = pairs
+            data['total_pairs'] = len(pairs)
+            data['num_issues'] = len(issues)
+            data['colors'] = cleaned_colors  # Store cleaned colors
+            data['buttons'] = buttons
+            data['images'] = images
+            data['text'] = text
+            data['readability'] = readability
+
+            print(f"[ANALYSIS] Found {len(issues)} contrast issues out of {len(pairs)} pairs")
+
+            # Analyze each pair for contrast issues (normal + colorblind)
+            issues = []
+            for pair in pairs:
+                try:
+                    ratio = contrast_ratio(pair['fg'], pair['bg'])
+                    cb_ratios = {}
+                    is_issue = ratio < threshold  # Use user-selected threshold (4.5, 3.0, or 7.0)
+                    for cb_type in MATRICES:
+                        cb_ratio = colorblind_contrast_ratio(pair['fg'], pair['bg'], cb_type)
+                        cb_ratios[cb_type] = cb_ratio
+                        if cb_ratio < threshold:
+                            is_issue = True
+                    if is_issue:
+                        issues.append({
+                            'fg': pair['fg'],
+                            'bg': pair['bg'],
+                            'ratio': round(ratio, 2),
+                            'cb_ratios': {
+                                'protanopia': round(cb_ratios['protanopia'], 2),
+                                'deuteranopia': round(cb_ratios['deuteranopia'], 2),
+                                'tritanopia': round(cb_ratios['tritanopia'], 2)
+                            },
+                            'min_ratio': min([ratio] + list(cb_ratios.values())),
+                            'is_colorblind_issue': any(r < threshold for r in cb_ratios.values())
+                        })
+                except Exception as e:
+                    print(f"[WARNING] Error analyzing pair {pair['fg']} on {pair['bg']}: {e}")
+                    continue
+
+            # Sort by worst ratio and limit
+            issues = sorted(issues, key=lambda x: x['min_ratio'])[:15]
+            data['issues'] = issues
+            data['pairs'] = pairs
+            data['total_pairs'] = len(pairs)
+            data['num_issues'] = len(issues)
+
+            print(f"[ANALYSIS] Found {len(issues)} contrast issues out of {len(pairs)} pairs")
             
-            # Step 5: Generate visuals
+            # Step 6: Generate visuals (BASED ON REAL DATA)
             status_text.text("📊 Generating reports...")
             progress_bar.progress(90)
             palette_img = create_palette_swatches(colors[:12])
             palette_cb = simulate_palette_colorblind(palette_img, mode='protanopia')
-            contrast_chart = plot_contrast_issues(pairs)
+            try:
+                contrast_chart = plot_lowest_contrast_pairs(data['issues'])
+                data['contrast_chart'] = contrast_chart
+            except Exception as e:
+                st.warning(f"⚠️ Could not generate contrast chart: {str(e)}")
+                data['contrast_chart'] = None
 
             score = compute_overall_score(len(issues), len(pairs), 
                                         readability.get('flesch_ease'), 
@@ -652,7 +788,7 @@ if analyze_btn:
             progress_bar.progress(100)
             status_text.text("✅ Analysis complete!")
 
-            # Store results
+            # Store results (WITH REAL BUTTONS/IMAGES)
             st.session_state.analysis = {
                 'url': url,
                 'colors': colors,
@@ -666,39 +802,11 @@ if analyze_btn:
                 'recommendations': recs,
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'text': text,
-                'heatmap': None,  # Will be filled later if available
-                'score_breakdown_chart': None  # Will be filled later if available
+                'buttons': buttons,  # REAL DATA
+                'images': images,     # REAL DATA
+                'heatmap': None,
+                'score_breakdown_chart': None
             }
-            
-            palette_img = create_palette_swatches(colors[:12])
-            palette_cb = simulate_palette_colorblind(palette_img, mode='protanopia')
-            contrast_chart = plot_contrast_issues(pairs)
-            
-            score = compute_overall_score(len(issues), len(pairs), 
-                                          readability.get('flesch_ease'), 
-                                          readability.get('fk_grade'))
-            recs = generate_recommendations(issues, pairs, colors, readability)
-            
-            progress_bar.progress(100)
-            status_text.text("✅ Analysis complete!")
-            
-            # Store results
-            st.session_state.analysis = {
-            'url': url,
-            'colors': colors,
-            'readability': readability,
-            'issues': issues,
-            'pairs': pairs,
-            'score': score,
-            'palette_img': palette_img,
-            'palette_cb': palette_cb,
-            'contrast_chart': contrast_chart,
-            'recommendations': recs,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'text': text,
-            'heatmap': None,  # Will be filled later if available
-            'score_breakdown_chart': None  # Will be filled later if available
-        }
             
             st.balloons()
             st.success("🎉 Analysis completed successfully!")
@@ -724,7 +832,7 @@ st.markdown("---")
 data = st.session_state.get('analysis')
 
 if not data:
-    # Empty state with helpful message
+    # Empty state
     st.markdown("""
     <div style="text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
                 border-radius: 16px; border: 2px dashed #cbd5e1;">
@@ -837,7 +945,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
     
-
     st.write("")
     st.markdown("---")
     
@@ -859,20 +966,29 @@ else:
     st.write("")
     st.markdown("---")
 
-    # USER ATTENTION HEATMAP SECTION (NEW)
+    # USER ATTENTION HEATMAP SECTION (NOW USES REAL DATA)
     st.markdown("### 📊 User Attention Heatmap")
     st.caption("Estimated focus areas based on buttons, images, and content distribution")
     
     try:
-        # Extract buttons and images for heatmap
+        # Use REAL buttons and images from extracted data
         buttons = data.get('buttons', [])
         images = data.get('images', [])
         
-        # Generate heatmap
-        heatmap_buffer = generate_simple_heatmap(buttons, images)
+        st.info(f"📌 Detected: {len(buttons)} interactive elements, {len(images)} images")
+        
+        # Generate heatmap with REAL data
+        heatmap_buf = generate_simple_heatmap(  
+            buttons=data.get('buttons', []),
+            images=data.get('images', []),
+            text_length=len(data.get('text', '').split()),  
+            headings=data.get('typography', {}).get('headings', {}),  
+            colors_count=len(data.get('colors', [])),  
+            readability_score=data.get('readability', {}).get('flesch_ease', 50)  
+        )
         
         # Display it
-        st.image(heatmap_buffer, use_column_width=True)
+        st.image(heatmap_buf, use_column_width=True)
         
         # Add explanation
         with st.expander("📖 How to read this heatmap"):
@@ -899,7 +1015,6 @@ else:
             - Horizontal: 12 sections (left to right across page)
             - Vertical: 6 sections (top to bottom of page)
             """)
-        
         
     except Exception as e:
         st.warning(f"Could not generate heatmap: {str(e)}")
@@ -939,7 +1054,6 @@ else:
             st.warning(f"⚠️ {len(data['issues'])} pairs need attention")
         else:
             st.success("✅ All pairs meet threshold")
-    
     
     st.write("")
     st.markdown("---")
@@ -986,7 +1100,6 @@ else:
     tabs = st.tabs(["🎯 Priority", "📋 All Recommendations"])
     
     with tabs[0]:
-        # Show top 5 priority recommendations
         for i, rec in enumerate(data['recommendations'][:5], 1):
             st.markdown(f"""
             <div style="padding: 16px; background: white; border-radius: 8px; margin: 12px 0; 
@@ -1126,7 +1239,7 @@ else:
         st.download_button(
             label="📥 Download JSON Report",
             data=json_export,
-            file_name=f"visualchroma_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            file_name=f"colorsync_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json"
         )
         
@@ -1151,11 +1264,9 @@ if data:
     
     with col_pdf_2:
         if st.button("📄 Generate Complete PDF Report", key="pdf_full_btn", use_container_width=True):
-            with st.spinner("🔄 Generating comprehensive PDF report..."):
+            with st.spinner("📄 Generating comprehensive PDF report..."):
                 try:
-                    # ========== PREPARE ALL DATA FOR PDF ==========
-                    
-                    # 1. Generate heatmap if not exists
+                    # Generate heatmap if not exists
                     if not data.get('heatmap'):
                         try:
                             buttons = data.get('buttons', [])
@@ -1166,7 +1277,7 @@ if data:
                             st.warning(f"⚠️ Could not generate heatmap: {str(e)}")
                             data['heatmap'] = None
                     
-                    # 2. Generate score breakdown chart if not exists
+                    # Generate score breakdown chart
                     if not data.get('score_breakdown_chart'):
                         try:
                             breakdown = compute_score_breakdown(
@@ -1176,7 +1287,6 @@ if data:
                                 len(data.get('text', ''))
                             )
                             
-                            # UPDATED: Smaller pie chart (7x5 → 6x4)
                             fig, ax = plt.subplots(figsize=(6, 4), facecolor='white')
                             sizes = list(breakdown['breakdown'].values())
                             labels = ['Contrast\n' + f"{breakdown['breakdown']['contrast']:.0f}%",
@@ -1190,7 +1300,7 @@ if data:
                                 autopct='%1.1f%%',
                                 startangle=90, 
                                 colors=colors_pie,
-                                textprops={'fontsize': 9, 'fontweight': 'bold'}  # Slightly smaller text
+                                textprops={'fontsize': 9, 'fontweight': 'bold'}
                             )
                             
                             ax.set_title('Score Breakdown Analysis', fontsize=12, fontweight='bold', pad=12)
@@ -1206,7 +1316,7 @@ if data:
                             st.warning(f"⚠️ Could not generate score breakdown: {str(e)}")
                             data['score_breakdown_chart'] = None
                     
-                    # 3. Generate AAA compliance chart
+                    # Generate AAA compliance chart
                     try:
                         aaa_data = suggest_aaa_compliant_colors(data['issues'], data['pairs'], data['colors'])
                         
@@ -1223,7 +1333,6 @@ if data:
                         ax.spines['top'].set_visible(False)
                         ax.spines['right'].set_visible(False)
                         
-                        # Add value labels on bars
                         for bar in bars:
                             height = bar.get_height()
                             ax.text(bar.get_x() + bar.get_width()/2., height,
@@ -1241,7 +1350,7 @@ if data:
                         st.warning(f"⚠️ Could not generate AAA chart: {str(e)}")
                         data['aaa_chart'] = None
                     
-                    # 4. Generate typography chart
+                    # Generate typography chart
                     try:
                         typo_data = analyze_typography_details(
                             data.get('text', ''),
@@ -1257,7 +1366,6 @@ if data:
                             typo_data['avg_words_per_sentence']
                         ]
                         
-                        # Normalize for display
                         normalized = [v / max(values) * 100 for v in values]
                         
                         bars = ax.barh(metrics, normalized, color=['#667eea', '#10b981', '#f59e0b'])
@@ -1267,7 +1375,6 @@ if data:
                         ax.spines['top'].set_visible(False)
                         ax.spines['right'].set_visible(False)
                         
-                        # Add actual values
                         for i, (bar, val) in enumerate(zip(bars, values)):
                             ax.text(bar.get_width() + 2, i, f'{val:.0f}',
                                    va='center', fontweight='bold', fontsize=10)
@@ -1283,8 +1390,7 @@ if data:
                         st.warning(f"⚠️ Could not generate typography chart: {str(e)}")
                         data['typography_chart'] = None
                     
-                    # ========== GENERATE PDF WITH ALL CHARTS ==========
-                    
+                    # Generate PDF
                     pdf_data = {
                         'url': data['url'],
                         'timestamp': data.get('timestamp', 'N/A'),
@@ -1302,13 +1408,10 @@ if data:
                         'typography_chart': data.get('typography_chart')
                     }
                     
-                    # Generate complete PDF
                     pdf_buffer = generate_complete_pdf_report(pdf_data)
                     
-                    # Filename
-                    filename = f"visualchroma_Complete_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    filename = f"ColorSync_Complete_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                     
-                    # Download button
                     st.download_button(
                         label="✅ Click to Download Complete PDF",
                         data=pdf_buffer,
@@ -1318,37 +1421,6 @@ if data:
                     )
                     
                     st.success("✅ PDF Generated Successfully!")
-                    
-                    # Show what's included
-                    st.info("""
-                    **📋 Your Complete PDF Report Includes:**
-                    
-                    **Page 1:** Title, URL, Key Metrics Table, Summary
-                    
-                    **Page 2:** Color Palette Swatches, Detected Colors List
-                    
-                    **Page 3:** Contrast Analysis Chart, Top 10 Issues Table
-                    
-                    **Page 4:** Color-blind Simulation (Protanopia)
-                    
-                    **Page 5:** User Attention Heatmap (Focus Zones)
-                    
-                    **Page 6:** Score Breakdown Pie Chart (Contrast/Readability/Content)
-                    
-                    **Page 7:** AAA Compliance Bar Chart
-                    
-                    **Page 8:** Typography Metrics Chart
-                    
-                    **Page 9:** Readability Analysis Details
-                    
-                    **Page 10-11:** All Recommendations (Complete List)
-                    
-                    **Page 12:** WCAG Guidelines, Implementation Plan
-                    
-                    **Page 13:** Footer, Resources, Next Steps
-                    
-                    ✨ **Fully Formatted** - No cutting, no extra spaces, compact & complete!
-                    """)
                     
                 except Exception as e:
                     st.error(f"❌ Error generating PDF: {str(e)}")

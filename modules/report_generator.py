@@ -9,7 +9,7 @@ def generate_pdf_report(output_path, site_url, access_report, read_report, heatm
     W, H = A4
     c.setFont("Helvetica-Bold", 16)
     c.setFillColor(colors.HexColor("#0047AB"))
-    c.drawString(30, H-50, "Vision Chroma pro — Accessibility Report")
+    c.drawString(30, H-50, "ColorSync Access — Accessibility Report")
     c.setFont("Helvetica", 10)
     c.setFillColor(colors.black)
     c.drawString(30, H-70, f"Website: {site_url}")

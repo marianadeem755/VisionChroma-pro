@@ -1,8 +1,3 @@
-"""
-Vision Chroma pro
-Add to modules/ folder as accessibility_enhancements.py
-"""
-
 import numpy as np
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
@@ -11,7 +6,8 @@ import pandas as pd
 from collections import Counter
 import re
 import json
-from .features_extension import compute_wcag_compliance_score
+from .features_extension import contrast_ratio, colorblind_contrast_ratio, compute_wcag_compliance_score
+from .colorblind_simulator import MATRICES
 
 # ============================================
 # FEATURE 1: Typography Analysis & Score
@@ -103,7 +99,6 @@ def plot_typography_analysis(headings, font_sizes):
     buf.seek(0)
     return buf
 
-
 # ============================================
 # FEATURE 2: Interactive Color Palette Generator
 # ============================================
@@ -113,7 +108,7 @@ def generate_complementary_palette(base_hex):
         hex_color = hex_color.lstrip('#')
         r, g, b = [int(hex_color[i:i+2], 16)/255.0 for i in (0, 2, 4)]
         mx, mn = max(r, g, b), min(r, g, b)
-        h = g = s = 0
+        h = s = v = 0
         if mx == mn:
             h = 0
         elif mx == r:
@@ -182,7 +177,6 @@ def create_palette_comparison_image(palettes, width=600, height=400):
             draw.text((x_start + 10, y_start + swatch_height - 20), color, fill=(255, 255, 255))
     
     return img
-
 
 # ============================================
 # FEATURE 3: WCAG Compliance Tracker & Report
@@ -324,48 +318,52 @@ def compute_score_breakdown(num_issues, total_pairs, readability, text_length):
 # ============================================
 # FEATURE 5: AAA Compliance Suggestions
 # ============================================
+def suggest_accessible_fg(bg_hex, desired_ratio=7.0):
+    """Suggest an accessible foreground color for a given background."""
+    if not bg_hex:
+        return '#000000'
+    if contrast_ratio(bg_hex, '#000000') >= desired_ratio:
+        return '#000000'
+    if contrast_ratio(bg_hex, '#FFFFFF') >= desired_ratio:
+        return '#FFFFFF'
+    return '#000000' if contrast_ratio(bg_hex, '#000000') > contrast_ratio(bg_hex, '#FFFFFF') else '#FFFFFF'
+
 def suggest_aaa_compliant_colors(issues, pairs, colors):
-    """Suggest color adjustments to meet WCAG AAA standards (7:1 contrast ratio)"""
-    def hex_to_rgb(hex_color):
-        h = hex_color.lstrip('#')
-        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-    
-    def srgb_to_linear_channel(c):
-        c = c / 255.0
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    
-    def relative_luminance(rgb):
-        r, g, b = rgb
-        return 0.2126 * srgb_to_linear_channel(r) + 0.7152 * srgb_to_linear_channel(g) + 0.0722 * srgb_to_linear_channel(b)
-    
-    def contrast_ratio(hex1, hex2):
-        L1 = relative_luminance(hex_to_rgb(hex1))
-        L2 = relative_luminance(hex_to_rgb(hex2))
-        lighter = max(L1, L2)
-        darker = min(L1, L2)
-        return round((lighter + 0.05) / (darker + 0.05), 2)
-    
-    aaa_compliant = sum(1 for pair in pairs if pair['ratio'] >= 7.0)
-    total_pairs = len(pairs)
-    percentage = (aaa_compliant / max(1, total_pairs)) * 100
-    
+    """Evaluate color pairs for WCAG AAA compliance (7.0:1) and suggest improvements."""
+    aaa_compliant = 0
     needs_work = []
-    for issue in issues:
-        if issue['ratio'] < 7.0:
-            fg = issue['fg']
-            bg = issue['bg']
-            # Suggest either black or white for foreground based on background
-            suggested_fg = '#000000' if contrast_ratio(bg, '#000000') >= 7.0 else '#FFFFFF'
-            needs_work.append({
-                'current': {'fg': fg, 'bg': bg, 'ratio': issue['ratio']},
-                'suggested': {'fg': suggested_fg, 'bg': bg, 'ratio': contrast_ratio(suggested_fg, bg)}
-            })
-    
+
+    for pair in pairs:
+        try:
+            # Calculate normal contrast ratio
+            ratio = contrast_ratio(pair['fg'], pair['bg'])
+            # Calculate colorblind contrast ratios
+            cb_ratios = {
+                cb_type: colorblind_contrast_ratio(pair['fg'], pair['bg'], cb_type)
+                for cb_type in MATRICES
+            }
+            # Check if pair meets AAA (7.0:1) for both normal and colorblind vision
+            if ratio >= 7.0 and all(cb_ratio >= 7.0 for cb_ratio in cb_ratios.values()):
+                aaa_compliant += 1
+            else:
+                # Suggest an accessible foreground color
+                suggested_fg = suggest_accessible_fg(pair['bg'], 7.0)
+                needs_work.append({
+                    'current': {'fg': pair['fg'], 'bg': pair['bg'], 'ratio': round(ratio, 2)},
+                    'suggested': {'fg': suggested_fg, 'bg': pair['bg'], 'ratio': round(contrast_ratio(suggested_fg, pair['bg']), 2)}
+                })
+        except Exception as e:
+            print(f"[WARNING] Error analyzing pair {pair['fg']} on {pair['bg']}: {e}")
+            continue
+
+    total_pairs = len(pairs) if pairs else 1  # Avoid division by zero
+    percentage = (aaa_compliant / total_pairs * 100) if total_pairs else 0
+
     return {
         'aaa_compliant': aaa_compliant,
+        'needs_work': needs_work[:15],  # Limit to avoid overwhelming output
         'total_pairs': total_pairs,
-        'percentage': round(percentage, 1),
-        'needs_work': needs_work
+        'percentage': round(percentage, 1)
     }
 
 # ============================================

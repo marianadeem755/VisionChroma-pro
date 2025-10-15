@@ -1,5 +1,5 @@
 """
-Enhanced Accessibility Features for Vision Chroma pro
+Enhanced Accessibility Features for ColorSync Access
 - AAA Compliance Suggestions
 - Typography Audit
 - Score Breakdown Analysis

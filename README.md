@@ -194,8 +194,8 @@ VisionChroma-pro/
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/yourusername/colorsync-access.git
-cd colorsync-access
+git clone https://github.com/yourusername/https://visionchroma-pro.streamlit.app.git
+cd VisionChroma-access
 ```
 
 ### Step 2: Create Virtual Environment
@@ -218,7 +218,7 @@ The application will be available at `http://localhost:8501`
 
 ## Live Demo
 
-Get a quick visual overview of ColorSync Access in action:
+Get a quick visual overview of Vision Chroma Pro in action:
 
 ### Dashboard Overview
 ![VisionChroma-pro Dashboard](images/demo-dashboard.jpg)

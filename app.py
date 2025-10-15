@@ -1,5 +1,5 @@
 """
-ColorSync Access - Professional Edition
+Vision Chroma Pro
 FIXED: Now analyzes REAL website data (no hardcoded defaults)
 """
 
@@ -549,8 +549,8 @@ def generate_recommendations(issues, pairs, colors, readability):
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config(
-    page_title="ColorSync Access - Professional Edition",
+st.set_page_config(Vision Chroma Pro
+    page_title=" - Professional Edition",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -563,7 +563,7 @@ st.markdown("""
     <div style="background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); 
                 padding: 40px 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(102,126,234,0.3);">
         <h1 style="color:white; margin:0; font-size: 42px; font-weight: 800;">
-            🌐 ColorSync Access
+            🌐 Vision Chroma Pro
         </h1>
         <p style="color: rgba(255,255,255,0.95); margin:10px 0 0 0; font-size: 18px; font-weight: 500;">
             Professional Web Accessibility & Readability Analyzer
@@ -1239,7 +1239,7 @@ else:
         st.download_button(
             label="📥 Download JSON Report",
             data=json_export,
-            file_name=f"colorsync_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            file_name=f"VisionChroma_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json"
         )
         
@@ -1410,7 +1410,7 @@ if data:
                     
                     pdf_buffer = generate_complete_pdf_report(pdf_data)
                     
-                    filename = f"ColorSync_Complete_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    filename = f"VisionChroma_Complete_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
                     
                     st.download_button(
                         label="✅ Click to Download Complete PDF",

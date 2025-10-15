@@ -549,8 +549,8 @@ def generate_recommendations(issues, pairs, colors, readability):
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config("Vision Chroma Pro",
-    page_title=" - Professional Edition",
+st.set_page_config(
+    page_title=" Vision Chroma Pro",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"

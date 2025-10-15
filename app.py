@@ -549,7 +549,7 @@ def generate_recommendations(issues, pairs, colors, readability):
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config(Vision Chroma Pro
+st.set_page_config("Vision Chroma Pro",
     page_title=" - Professional Edition",
     page_icon="🌐",
     layout="wide",
